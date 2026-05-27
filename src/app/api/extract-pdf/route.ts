@@ -6,6 +6,18 @@ const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const SCANNED_PDF_MESSAGE =
   "Diese PDF scheint gescannt zu sein. OCR wird im ersten MVP noch nicht unterstützt.";
 
+type PdfPageData = {
+  getTextContent: (options: {
+    normalizeWhitespace: boolean;
+    disableCombineTextItems: boolean;
+  }) => Promise<{
+    items: Array<{
+      str: string;
+      transform: number[];
+    }>;
+  }>;
+};
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -31,8 +43,16 @@ export async function POST(request: Request) {
     }
 
     const pdfParse = (await import("pdf-parse")).default;
-    const result = await pdfParse(Buffer.from(arrayBuffer));
-    const text = normalizePdfText(result.text);
+    const pageTexts: string[] = [];
+    const result = await pdfParse(Buffer.from(arrayBuffer), {
+      pagerender: async (pageData: PdfPageData) => {
+        const pageText = await renderPdfPage(pageData);
+        pageTexts.push(normalizePdfPageText(pageText));
+        return pageText;
+      },
+    });
+    const normalizedPages = pageTexts.length ? pageTexts.filter(Boolean) : [normalizePdfText(result.text)];
+    const { text, pageStarts } = joinPages(normalizedPages);
 
     if (!text) {
       return NextResponse.json({ error: SCANNED_PDF_MESSAGE }, { status: 422 });
@@ -41,6 +61,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       text,
       pages: result.numpages ?? null,
+      pageStarts,
     });
   } catch {
     return NextResponse.json(
@@ -57,7 +78,51 @@ function isUploadedFile(value: FormDataEntryValue | null): value is File {
 function normalizePdfText(text: string) {
   return text
     .replace(/\r\n/g, "\n")
+    .replace(/([\p{Script=Han}])[\t ]+([\p{Script=Han}])/gu, "$1$2")
+    .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function normalizePdfPageText(text: string) {
+  return normalizePdfText(text);
+}
+
+async function renderPdfPage(pageData: PdfPageData) {
+  const textContent = await pageData.getTextContent({
+    normalizeWhitespace: false,
+    disableCombineTextItems: false,
+  });
+
+  let lastY: number | undefined;
+  let text = "";
+
+  for (const item of textContent.items) {
+    const y = item.transform[5];
+    text += lastY === y || lastY === undefined ? item.str : `\n${item.str}`;
+    lastY = y;
+  }
+
+  return text;
+}
+
+function joinPages(pages: string[]) {
+  const pageStarts: number[] = [];
+  let text = "";
+
+  for (const pageText of pages) {
+    if (!pageText) {
+      continue;
+    }
+
+    if (text) {
+      text += "\n\n";
+    }
+
+    pageStarts.push(text.length);
+    text += pageText;
+  }
+
+  return { text, pageStarts };
 }

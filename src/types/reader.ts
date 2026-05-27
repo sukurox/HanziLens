@@ -7,6 +7,7 @@ export type DictionaryEntryDto = {
   english: string[];
   german: string[];
   germanMissing: boolean;
+  isGenerated: boolean;
 };
 
 export type ReaderToken = {

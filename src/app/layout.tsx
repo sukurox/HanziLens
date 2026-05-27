@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Biberl Reader",
+  title: "HanziLens",
   description: "Eine minimale Reading-App fuer chinesische Texte mit integrierter Sprachhilfe.",
 };
 

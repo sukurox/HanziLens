@@ -293,6 +293,7 @@ export function lookupDictionaryEntry(word: string): DictionaryEntryDto | undefi
       english: entry.english,
       german: entry.german ?? [],
       germanMissing: !entry.german?.length,
+      isGenerated: false,
     };
   }
 
@@ -307,6 +308,7 @@ export function lookupDictionaryEntry(word: string): DictionaryEntryDto | undefi
     english: [],
     german: [],
     germanMissing: true,
+    isGenerated: true,
   };
 }
 

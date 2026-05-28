@@ -8,7 +8,11 @@ type NodeJiebaApi = {
 let cachedJieba: NodeJiebaApi | null | false = null;
 
 const CHINESE_RUN_REGEX = /[\u3400-\u9FFF\uF900-\uFAFF]+/gu;
-const MAX_FALLBACK_WORD_LENGTH = Math.max(1, ...dictionaryWords.map((word) => word.length));
+const MAX_FALLBACK_WORD_LENGTH = dictionaryWords.reduce(
+  (maxLength, word) => Math.max(maxLength, word.length),
+  1,
+);
+const MAX_DICTIONARY_MATCH_LENGTH = Math.min(MAX_FALLBACK_WORD_LENGTH, 16);
 
 export function segmentChineseText(text: string): ReaderToken[] {
   const tokens: ReaderToken[] = [];
@@ -80,7 +84,7 @@ function segmentChineseRun(run: string) {
   if (jieba) {
     const words = jieba.cut(run).filter(Boolean);
     if (words.length > 0) {
-      return words;
+      return dictionaryAwareSegment(run, words);
     }
   }
 
@@ -108,21 +112,52 @@ function fallbackSegment(run: string) {
   let cursor = 0;
 
   while (cursor < run.length) {
-    let match = "";
-    const maxLength = Math.min(MAX_FALLBACK_WORD_LENGTH, run.length - cursor);
-
-    for (let length = maxLength; length > 0; length -= 1) {
-      const candidate = run.slice(cursor, cursor + length);
-      if (dictionaryWordSet.has(candidate)) {
-        match = candidate;
-        break;
-      }
-    }
-
+    const match = findLongestDictionaryMatch(run, cursor);
     const nextWord = match || run[cursor];
     words.push(nextWord);
     cursor += nextWord.length;
   }
 
   return words;
+}
+
+function dictionaryAwareSegment(run: string, baseWords: string[]) {
+  const words: string[] = [];
+  let cursor = 0;
+  let baseIndex = 0;
+  let baseOffset = 0;
+
+  while (cursor < run.length) {
+    while (baseIndex < baseWords.length && baseOffset < cursor) {
+      baseOffset += baseWords[baseIndex].length;
+      baseIndex += 1;
+    }
+
+    const dictionaryMatch = findLongestDictionaryMatch(run, cursor);
+    if (dictionaryMatch && dictionaryMatch.length > 1) {
+      words.push(dictionaryMatch);
+      cursor += dictionaryMatch.length;
+      continue;
+    }
+
+    const baseWord = baseOffset === cursor ? baseWords[baseIndex] : "";
+    const nextWord = baseWord || run[cursor];
+    words.push(nextWord);
+    cursor += nextWord.length;
+  }
+
+  return words;
+}
+
+function findLongestDictionaryMatch(run: string, cursor: number) {
+  const maxLength = Math.min(MAX_DICTIONARY_MATCH_LENGTH, run.length - cursor);
+
+  for (let length = maxLength; length > 0; length -= 1) {
+    const candidate = run.slice(cursor, cursor + length);
+    if (dictionaryWordSet.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
 }

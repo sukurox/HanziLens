@@ -1,7 +1,10 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { pinyin } from "pinyin-pro";
+import { convert } from "pinyin-pro";
 import type { DictionaryEntryDto } from "@/types/reader";
 
-type DictionarySource = "cc-cedict-seed" | "de-extension" | "generated";
+type DictionarySource = "cc-cedict-seed" | "de-extension" | "handedict" | "generated";
 
 export type MultilingualDictionaryEntry = {
   simplified: string;
@@ -265,12 +268,14 @@ const CEDICT_SEED: MultilingualDictionaryEntry[] = [
   },
 ];
 
-const entriesBySimplified = new Map(
-  CEDICT_SEED.map((entry) => [entry.simplified, entry]),
-);
+const HANDEDICT_PATH = path.join(process.cwd(), "data", "handedict.u8");
+
+const DICTIONARY_ENTRIES = mergeDictionaryEntries(CEDICT_SEED, loadHandedictEntries());
+
+const entriesBySimplified = new Map(DICTIONARY_ENTRIES.map((entry) => [entry.simplified, entry]));
 
 const entriesByTraditional = new Map(
-  CEDICT_SEED.map((entry) => [entry.traditional, entry]),
+  DICTIONARY_ENTRIES.map((entry) => [entry.traditional, entry]),
 );
 
 export const dictionaryWordSet = new Set([
@@ -314,4 +319,97 @@ export function lookupDictionaryEntry(word: string): DictionaryEntryDto | undefi
 
 function containsChinese(value: string) {
   return /[\u3400-\u9FFF\uF900-\uFAFF]/u.test(value);
+}
+
+function loadHandedictEntries(): MultilingualDictionaryEntry[] {
+  if (!existsSync(HANDEDICT_PATH)) {
+    return [];
+  }
+
+  const text = readFileSync(HANDEDICT_PATH, "utf8");
+  const entries: MultilingualDictionaryEntry[] = [];
+
+  for (const line of text.split(/\r?\n/)) {
+    const entry = parseHandedictLine(line);
+    if (entry) {
+      entries.push(entry);
+    }
+  }
+
+  return entries;
+}
+
+function parseHandedictLine(line: string): MultilingualDictionaryEntry | null {
+  if (!line || line.startsWith("#")) {
+    return null;
+  }
+
+  const match = line.match(/^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+\/(.+)\/$/u);
+  if (!match) {
+    return null;
+  }
+
+  const [, traditional, simplified, numberedPinyin, definitionText] = match;
+  const german = definitionText
+    .split("/")
+    .map(cleanGermanDefinition)
+    .filter(Boolean);
+
+  if (!containsChinese(simplified) || german.length === 0) {
+    return null;
+  }
+
+  return {
+    simplified,
+    traditional,
+    pinyin: convert(numberedPinyin.replace(/u:/g, "ü"), { format: "numToSymbol" }),
+    english: [],
+    german,
+    source: "handedict",
+  };
+}
+
+function cleanGermanDefinition(definition: string) {
+  return definition
+    .replace(/&lt;?/g, "<")
+    .replace(/&gt;?/g, ">")
+    .replace(/&amp;?/g, "&")
+    .replace(/\(u\.E\.\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mergeDictionaryEntries(
+  baseEntries: MultilingualDictionaryEntry[],
+  additionalEntries: MultilingualDictionaryEntry[],
+) {
+  const merged = new Map<string, MultilingualDictionaryEntry>();
+
+  for (const entry of [...baseEntries, ...additionalEntries]) {
+    const key = entry.simplified;
+    const existing = merged.get(key);
+
+    if (!existing) {
+      merged.set(key, {
+        ...entry,
+        english: dedupe(entry.english),
+        german: dedupe(entry.german ?? []),
+      });
+      continue;
+    }
+
+    merged.set(key, {
+      ...existing,
+      traditional: existing.traditional || entry.traditional,
+      pinyin: existing.pinyin || entry.pinyin,
+      english: dedupe([...existing.english, ...entry.english]),
+      german: dedupe([...(existing.german ?? []), ...(entry.german ?? [])]),
+    });
+  }
+
+  return [...merged.values()];
+}
+
+function dedupe(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

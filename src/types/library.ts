@@ -3,6 +3,7 @@ export type BookSourceType = "text" | "txt" | "pdf" | "epub";
 export type BookImportMetadata = {
   pageCount?: number | null;
   pageStarts?: number[];
+  pdfAssetId?: string;
 };
 
 export type LibraryBook = {
@@ -12,6 +13,7 @@ export type LibraryBook = {
   sourceType: BookSourceType;
   pageCount?: number | null;
   pageStarts?: number[];
+  pdfAssetId?: string;
   addedAt: string;
   lastOpenedAt: string;
 };

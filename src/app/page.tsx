@@ -4,6 +4,7 @@ import { AlertCircle, BookOpen } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FileUpload } from "@/components/FileUpload";
 import { LibraryShelf } from "@/components/LibraryShelf";
+import { PdfBookReader } from "@/components/PdfBookReader";
 import { Reader } from "@/components/Reader";
 import { ReaderOptions } from "@/components/ReaderOptions";
 import { SavedWordsPanel } from "@/components/SavedWordsPanel";
@@ -12,6 +13,7 @@ import { ThemeToggle, type ThemeMode } from "@/components/ThemeToggle";
 import { useLibraryBooks } from "@/hooks/useLibraryBooks";
 import { useSavedWords } from "@/hooks/useSavedWords";
 import { extractContextSentence } from "@/lib/context";
+import { deletePdfAsset, savePdfAsset } from "@/lib/pdfStorage";
 import { getReadingPage, getReadingSection, resolvePdfPageReference } from "@/lib/readingSections";
 import type { BookImportMetadata, BookSourceType, LibraryBook, ReadingSection } from "@/types/library";
 import type { ReaderToken, TranslationLanguage } from "@/types/reader";
@@ -102,6 +104,7 @@ export default function Home() {
     sourceName: string,
     sourceType: BookSourceType,
     metadata?: BookImportMetadata,
+    originalFileData?: ArrayBuffer,
   ) {
     if (!text.trim()) {
       setError("Bitte füge zuerst chinesischen Text ein.");
@@ -109,6 +112,14 @@ export default function Home() {
     }
 
     const book = addBook(sourceName, text, sourceType, metadata);
+    if (sourceType === "pdf" && originalFileData && book.pdfAssetId) {
+      try {
+        await savePdfAsset(book.pdfAssetId, originalFileData);
+      } catch {
+        setError("Die PDF wurde als Text importiert, aber die Original-PDF konnte nicht lokal gespeichert werden.");
+      }
+    }
+
     await analyzeSection(book, 0);
   }
 
@@ -120,6 +131,11 @@ export default function Home() {
   }
 
   function removeLibraryBook(bookId: string) {
+    const book = books.find((item) => item.id === bookId);
+    if (book?.pdfAssetId) {
+      void deletePdfAsset(book.pdfAssetId).catch(() => undefined);
+    }
+
     removeBook(bookId);
 
     if (bookId === activeBookId) {
@@ -162,16 +178,48 @@ export default function Home() {
   const currentPage = hasPageNavigation && readerSection ? readerSection.index + 1 : null;
   const pageCount = activeBook?.pageCount ?? activeBook?.pageStarts?.length ?? null;
   const needsPdfReimport = activeBook?.sourceType === "pdf" && !activeBook.pageStarts?.length;
+  const needsOriginalPdfReimport = activeBook?.sourceType === "pdf" && !activeBook.pdfAssetId;
   const sectionMeta =
     activeBook && readerSection
       ? hasPageNavigation && currentPage && pageCount
-        ? `Seite ${currentPage} von ${pageCount}`
+        ? `Seite ${currentPage} von ${pageCount}${
+          needsOriginalPdfReimport ? " - Original-PDF fuer PDF.js bitte neu importieren" : ""
+        }`
         : `${(readerSection.start + 1).toLocaleString("de-DE")}-${readerSection.end.toLocaleString(
           "de-DE",
         )} von ${activeBook.text.length.toLocaleString("de-DE")} Zeichen${
           needsPdfReimport ? " · PDF für Seiten-Navigation bitte neu importieren" : ""
         }`
       : undefined;
+  const canUseOriginalPdfReader = Boolean(
+    activeBook?.sourceType === "pdf" && activeBook.pdfAssetId && currentPage && pageCount,
+  );
+
+  function renderAnnotatedReader(showHeader = true) {
+    return (
+      <Reader
+        title={readerTitle}
+        tokens={deferredTokens}
+        language={language}
+        savedWordKeys={savedWordKeys}
+        isLoading={isLoading}
+        sectionIndex={readerSection?.index}
+        sectionTotal={readerSection?.total}
+        sectionMeta={sectionMeta}
+        navigationUnit={hasPageNavigation ? "page" : "section"}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        showHeader={showHeader}
+        canGoPrevious={canGoPrevious}
+        canGoNext={canGoNext}
+        onPreviousSection={() => readerSection && goToSection(readerSection.index - 1)}
+        onNextSection={() => readerSection && goToSection(readerSection.index + 1)}
+        onGoToSection={goToSection}
+        onGoToPage={goToPage}
+        onSaveWord={saveWord}
+      />
+    );
+  }
 
   return (
     <main className="min-h-screen bg-paper text-ink">
@@ -219,8 +267,8 @@ export default function Home() {
             isLoading={isLoading}
             onLoadingChange={setIsLoading}
             onError={setError}
-            onTextExtracted={(text, sourceName, sourceType, metadata) =>
-              importBook(text, sourceName, sourceType, metadata)
+            onTextExtracted={(text, sourceName, sourceType, metadata, originalFileData) =>
+              importBook(text, sourceName, sourceType, metadata, originalFileData)
             }
           />
         </aside>
@@ -246,26 +294,22 @@ export default function Home() {
             </div>
           ) : null}
 
-          <Reader
-            title={readerTitle}
-            tokens={deferredTokens}
-            language={language}
-            savedWordKeys={savedWordKeys}
-            isLoading={isLoading}
-            sectionIndex={readerSection?.index}
-            sectionTotal={readerSection?.total}
-            sectionMeta={sectionMeta}
-            navigationUnit={hasPageNavigation ? "page" : "section"}
-            currentPage={currentPage}
-            pageCount={pageCount}
-            canGoPrevious={canGoPrevious}
-            canGoNext={canGoNext}
-            onPreviousSection={() => readerSection && goToSection(readerSection.index - 1)}
-            onNextSection={() => readerSection && goToSection(readerSection.index + 1)}
-            onGoToSection={goToSection}
-            onGoToPage={goToPage}
-            onSaveWord={saveWord}
-          />
+          {canUseOriginalPdfReader && activeBook?.pdfAssetId ? (
+            <PdfBookReader
+              title={readerTitle}
+              pdfAssetId={activeBook.pdfAssetId}
+              currentPage={currentPage}
+              pageCount={pageCount}
+              sectionMeta={sectionMeta}
+              isLoading={isLoading}
+              canGoPrevious={canGoPrevious}
+              canGoNext={canGoNext}
+              annotatedReader={renderAnnotatedReader(false)}
+              onGoToPage={goToPage}
+            />
+          ) : (
+            renderAnnotatedReader(true)
+          )}
         </section>
 
         <div className="order-3">

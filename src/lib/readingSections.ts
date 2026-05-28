@@ -11,14 +11,16 @@ export function createLibraryBook(
   metadata: BookImportMetadata = {},
 ): LibraryBook {
   const now = new Date().toISOString();
+  const id = createId();
 
   return {
-    id: createId(),
+    id,
     title: title.trim() || "Unbenannte Lektüre",
     text,
     sourceType,
     pageCount: metadata.pageCount ?? null,
     pageStarts: metadata.pageStarts,
+    pdfAssetId: metadata.pdfAssetId ?? (sourceType === "pdf" ? id : undefined),
     addedAt: now,
     lastOpenedAt: now,
   };

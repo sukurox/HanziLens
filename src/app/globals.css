@@ -93,6 +93,29 @@ body {
     box-shadow: inset 0 -0.1em 0 rgba(199, 163, 74, 0.38);
   }
 
+  .pdf-link-hotspot {
+    position: absolute;
+    border-radius: 0.18rem;
+    cursor: pointer;
+    background: rgba(199, 163, 74, 0.02);
+    transition:
+      background-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .pdf-link-hotspot:hover {
+    background: rgba(199, 163, 74, 0.18);
+    box-shadow: inset 0 0 0 2px rgba(199, 163, 74, 0.5);
+  }
+
+  .pdf-original-stage {
+    scrollbar-color: rgba(199, 163, 74, 0.45) transparent;
+  }
+
+  .pdf-page-surface {
+    background: #fbfaf4;
+  }
+
   .reader-block {
     content-visibility: auto;
     contain-intrinsic-size: 1px 240px;
@@ -119,6 +142,18 @@ body {
 
   .dark .border-archive\/10 {
     border-color: rgba(232, 237, 241, 0.10);
+  }
+
+  .dark .pdf-original-stage {
+    background: rgba(232, 237, 241, 0.05);
+  }
+
+  .dark .pdf-page-surface {
+    background: #101713;
+  }
+
+  .dark .pdf-page-surface canvas {
+    filter: invert(0.88) hue-rotate(180deg) contrast(0.95) brightness(0.9);
   }
 
   .dark button:disabled,

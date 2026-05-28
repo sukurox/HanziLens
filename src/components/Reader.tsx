@@ -17,6 +17,7 @@ type ReaderProps = {
   navigationUnit?: "page" | "section";
   currentPage?: number | null;
   pageCount?: number | null;
+  showHeader?: boolean;
   canGoPrevious?: boolean;
   canGoNext?: boolean;
   onSaveWord: (token: ReaderToken) => void;
@@ -66,6 +67,7 @@ export function Reader({
   navigationUnit = "section",
   currentPage,
   pageCount,
+  showHeader = true,
   canGoPrevious = false,
   canGoNext = false,
   onSaveWord,
@@ -164,6 +166,7 @@ export function Reader({
 
   return (
     <section className="relative overflow-hidden rounded-lg border border-archive/10 bg-vellum shadow-soft">
+      {showHeader ? (
       <div className="border-b border-archive/10 px-4 py-4 sm:px-7 lg:px-10">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
@@ -242,6 +245,7 @@ export function Reader({
           <div className="h-full rounded-full bg-gold" style={{ width: `${progress}%` }} />
         </div>
       </div>
+      ) : null}
 
       <article className="min-h-[calc(100vh-14rem)] whitespace-pre-wrap px-5 py-9 font-reader text-[1.58rem] leading-[3rem] text-ink sm:px-8 sm:py-12 sm:text-[1.8rem] sm:leading-[3.4rem] lg:px-12 xl:px-16 xl:text-[1.92rem] xl:leading-[3.65rem]">
         <div className="mx-auto max-w-[62rem]">

@@ -9,6 +9,7 @@ type FileUploadProps = {
     sourceName: string,
     sourceType: BookSourceType,
     metadata?: BookImportMetadata,
+    originalFileData?: ArrayBuffer,
   ) => void | Promise<void>;
   onError: (message: string) => void;
   onLoadingChange: (loading: boolean) => void;
@@ -37,8 +38,9 @@ export function FileUpload({
       }
 
       if (isPdfFile(file)) {
+        const pdfData = await file.arrayBuffer();
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", new Blob([pdfData], { type: file.type || "application/pdf" }), file.name);
 
         const response = await fetch("/api/extract-pdf", {
           method: "POST",
@@ -55,10 +57,16 @@ export function FileUpload({
           throw new Error(payload.error ?? "Die PDF konnte nicht extrahiert werden.");
         }
 
-        await onTextExtracted(payload.text, file.name, "pdf", {
-          pageCount: payload.pages ?? null,
-          pageStarts: payload.pageStarts,
-        });
+        await onTextExtracted(
+          payload.text,
+          file.name,
+          "pdf",
+          {
+            pageCount: payload.pages ?? null,
+            pageStarts: payload.pageStarts,
+          },
+          pdfData,
+        );
         return;
       }
 

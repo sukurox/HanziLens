@@ -12,7 +12,7 @@ import { ThemeToggle, type ThemeMode } from "@/components/ThemeToggle";
 import { useLibraryBooks } from "@/hooks/useLibraryBooks";
 import { useSavedWords } from "@/hooks/useSavedWords";
 import { extractContextSentence } from "@/lib/context";
-import { getPageForOffset, getReadingSection, getSectionIndexForPage } from "@/lib/readingSections";
+import { getReadingPage, getReadingSection } from "@/lib/readingSections";
 import type { BookImportMetadata, BookSourceType, LibraryBook, ReadingSection } from "@/types/library";
 import type { ReaderToken, TranslationLanguage } from "@/types/reader";
 
@@ -54,10 +54,13 @@ export default function Home() {
   }, [theme]);
 
   async function analyzeSection(book: LibraryBook, sectionIndex: number) {
-    const section = getReadingSection(book.text, sectionIndex);
+    const hasPageNavigation = Boolean(book.pageStarts?.length);
+    const section = hasPageNavigation
+      ? getReadingPage(book, sectionIndex + 1)
+      : getReadingSection(book.text, sectionIndex);
 
     if (!section.text.trim()) {
-      setError("Dieser Abschnitt enthält keinen lesbaren Text.");
+      setError(hasPageNavigation ? "Diese Seite enthält keinen lesbaren Text." : "Dieser Abschnitt enthält keinen lesbaren Text.");
       return;
     }
 
@@ -141,7 +144,7 @@ export default function Home() {
       return;
     }
 
-    void analyzeSection(activeBook, getSectionIndexForPage(activeBook, page));
+    void analyzeSection(activeBook, page - 1);
   }
 
   function saveWord(token: ReaderToken) {
@@ -154,14 +157,18 @@ export default function Home() {
 
   const canGoPrevious = Boolean(readerSection && readerSection.index > 0);
   const canGoNext = Boolean(readerSection && readerSection.index < readerSection.total - 1);
-  const currentPage = activeBook && readerSection ? getPageForOffset(activeBook.pageStarts, readerSection.start) : null;
+  const hasPageNavigation = Boolean(activeBook?.pageStarts?.length);
+  const currentPage = hasPageNavigation && readerSection ? readerSection.index + 1 : null;
   const pageCount = activeBook?.pageCount ?? activeBook?.pageStarts?.length ?? null;
+  const needsPdfReimport = activeBook?.sourceType === "pdf" && !activeBook.pageStarts?.length;
   const sectionMeta =
     activeBook && readerSection
-      ? `${(readerSection.start + 1).toLocaleString("de-DE")}-${readerSection.end.toLocaleString(
+      ? hasPageNavigation && currentPage && pageCount
+        ? `Seite ${currentPage} von ${pageCount}`
+        : `${(readerSection.start + 1).toLocaleString("de-DE")}-${readerSection.end.toLocaleString(
           "de-DE",
         )} von ${activeBook.text.length.toLocaleString("de-DE")} Zeichen${
-          currentPage && pageCount ? ` · Seite ${currentPage} von ${pageCount}` : ""
+          needsPdfReimport ? " · PDF für Seiten-Navigation bitte neu importieren" : ""
         }`
       : undefined;
 
@@ -247,6 +254,7 @@ export default function Home() {
             sectionIndex={readerSection?.index}
             sectionTotal={readerSection?.total}
             sectionMeta={sectionMeta}
+            navigationUnit={hasPageNavigation ? "page" : "section"}
             currentPage={currentPage}
             pageCount={pageCount}
             canGoPrevious={canGoPrevious}

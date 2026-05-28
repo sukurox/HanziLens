@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         return pageText;
       },
     });
-    const normalizedPages = pageTexts.length ? pageTexts.filter(Boolean) : [normalizePdfText(result.text)];
+    const normalizedPages = pageTexts.length ? pageTexts : [normalizePdfText(result.text)];
     const { text, pageStarts } = joinPages(normalizedPages);
 
     if (!text) {
@@ -79,7 +79,6 @@ function normalizePdfText(text: string) {
   return text
     .replace(/\r\n/g, "\n")
     .replace(/([\p{Script=Han}])[\t ]+([\p{Script=Han}])/gu, "$1$2")
-    .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -112,10 +111,6 @@ function joinPages(pages: string[]) {
   let text = "";
 
   for (const pageText of pages) {
-    if (!pageText) {
-      continue;
-    }
-
     if (text) {
       text += "\n\n";
     }

@@ -14,6 +14,7 @@ type ReaderProps = {
   sectionIndex?: number;
   sectionTotal?: number;
   sectionMeta?: string;
+  navigationUnit?: "page" | "section";
   currentPage?: number | null;
   pageCount?: number | null;
   canGoPrevious?: boolean;
@@ -45,6 +46,7 @@ export function Reader({
   sectionIndex = 0,
   sectionTotal = 0,
   sectionMeta,
+  navigationUnit = "section",
   currentPage,
   pageCount,
   canGoPrevious = false,
@@ -61,7 +63,7 @@ export function Reader({
 
   const tokenBlocks = useMemo(() => chunkTokens(tokens), [tokens]);
   const progress = sectionTotal ? ((sectionIndex + 1) / sectionTotal) * 100 : 0;
-  const hasPages = Boolean(pageCount && pageCount > 0);
+  const hasPages = navigationUnit === "page" && Boolean(pageCount && pageCount > 0);
 
   useEffect(() => {
     setActiveWord(null);
@@ -175,23 +177,25 @@ export function Reader({
               </form>
             ) : null}
 
-            <form onSubmit={submitSection} className="min-w-36">
-              <label className="block text-xs font-semibold uppercase text-slate-500" htmlFor="reader-section">
-                Abschnitt
-              </label>
-              <div className="mt-1 flex items-center rounded-full border border-archive/10 bg-white px-3 py-1.5">
-                <input
-                  id="reader-section"
-                  type="number"
-                  min={1}
-                  max={sectionTotal || undefined}
-                  value={sectionInput}
-                  onChange={(event) => setSectionInput(event.target.value)}
-                  className="w-14 bg-transparent text-sm font-semibold text-ink outline-none"
-                />
-                <span className="text-xs text-slate-500">/ {sectionTotal}</span>
-              </div>
-            </form>
+            {navigationUnit === "section" ? (
+              <form onSubmit={submitSection} className="min-w-36">
+                <label className="block text-xs font-semibold uppercase text-slate-500" htmlFor="reader-section">
+                  Abschnitt
+                </label>
+                <div className="mt-1 flex items-center rounded-full border border-archive/10 bg-white px-3 py-1.5">
+                  <input
+                    id="reader-section"
+                    type="number"
+                    min={1}
+                    max={sectionTotal || undefined}
+                    value={sectionInput}
+                    onChange={(event) => setSectionInput(event.target.value)}
+                    className="w-14 bg-transparent text-sm font-semibold text-ink outline-none"
+                  />
+                  <span className="text-xs text-slate-500">/ {sectionTotal}</span>
+                </div>
+              </form>
+            ) : null}
 
             <div className="inline-flex rounded-full border border-archive/10 bg-white p-1">
               <button
@@ -199,7 +203,7 @@ export function Reader({
                 onClick={onPreviousSection}
                 disabled={!canGoPrevious || isLoading}
                 className="rounded-full p-2 text-slate-500 transition hover:bg-vellum hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="Vorherigen Abschnitt öffnen"
+                aria-label={navigationUnit === "page" ? "Vorherige Seite öffnen" : "Vorherigen Abschnitt öffnen"}
               >
                 <ChevronLeft size={19} aria-hidden="true" />
               </button>
@@ -208,7 +212,7 @@ export function Reader({
                 onClick={onNextSection}
                 disabled={!canGoNext || isLoading}
                 className="rounded-full p-2 text-slate-500 transition hover:bg-vellum hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="Nächsten Abschnitt öffnen"
+                aria-label={navigationUnit === "page" ? "Nächste Seite öffnen" : "Nächsten Abschnitt öffnen"}
               >
                 <ChevronRight size={19} aria-hidden="true" />
               </button>
@@ -221,7 +225,7 @@ export function Reader({
         </div>
       </div>
 
-      <article className="min-h-[calc(100vh-14rem)] whitespace-pre-line px-5 py-9 font-reader text-[1.58rem] leading-[3rem] text-ink sm:px-8 sm:py-12 sm:text-[1.8rem] sm:leading-[3.4rem] lg:px-12 xl:px-16 xl:text-[1.92rem] xl:leading-[3.65rem]">
+      <article className="min-h-[calc(100vh-14rem)] whitespace-pre-wrap px-5 py-9 font-reader text-[1.58rem] leading-[3rem] text-ink sm:px-8 sm:py-12 sm:text-[1.8rem] sm:leading-[3.4rem] lg:px-12 xl:px-16 xl:text-[1.92rem] xl:leading-[3.65rem]">
         <div className="mx-auto max-w-[62rem]">
           {tokenBlocks.map((block, blockIndex) => (
             <p key={blockIndex} className="reader-block mb-6">

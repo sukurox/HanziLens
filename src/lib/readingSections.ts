@@ -39,43 +39,26 @@ export function getReadingSection(text: string, index: number): ReadingSection {
   };
 }
 
+export function getReadingPage(book: LibraryBook, page: number): ReadingSection {
+  if (!book.pageStarts?.length) {
+    return getReadingSection(book.text, 0);
+  }
+
+  const safePageIndex = clamp(Math.round(page) - 1, 0, book.pageStarts.length - 1);
+  const start = book.pageStarts[safePageIndex];
+  const end = book.pageStarts[safePageIndex + 1] ?? book.text.length;
+
+  return {
+    index: safePageIndex,
+    total: book.pageStarts.length,
+    start,
+    end,
+    text: book.text.slice(start, end).trim(),
+  };
+}
+
 export function getSectionCount(text: string) {
   return Math.max(1, Math.ceil(text.length / READER_SECTION_LENGTH));
-}
-
-export function getSectionIndexForOffset(text: string, offset: number) {
-  return clamp(Math.floor(offset / READER_SECTION_LENGTH), 0, getSectionCount(text) - 1);
-}
-
-export function getPageForOffset(pageStarts: number[] | undefined, offset: number) {
-  if (!pageStarts?.length) {
-    return null;
-  }
-
-  let low = 0;
-  let high = pageStarts.length - 1;
-  let pageIndex = 0;
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    if (pageStarts[middle] <= offset) {
-      pageIndex = middle;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return pageIndex + 1;
-}
-
-export function getSectionIndexForPage(book: LibraryBook, page: number) {
-  if (!book.pageStarts?.length) {
-    return 0;
-  }
-
-  const safePage = clamp(Math.round(page), 1, book.pageStarts.length);
-  return getSectionIndexForOffset(book.text, book.pageStarts[safePage - 1]);
 }
 
 function createId() {

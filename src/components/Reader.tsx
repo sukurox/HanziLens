@@ -23,7 +23,7 @@ type ReaderProps = {
   onPreviousSection?: () => void;
   onNextSection?: () => void;
   onGoToSection?: (index: number) => void;
-  onGoToPage?: (page: number) => void;
+  onGoToPage?: (page: number, referenceContext?: string) => void;
 };
 
 type ActiveWord = {
@@ -34,8 +34,25 @@ type ActiveWord = {
   };
 };
 
+type PlainTextPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "page";
+      text: string;
+      page: number;
+      context: string;
+    };
+
 const TOKENS_PER_BLOCK = 260;
 const POPUP_WIDTH = 320;
+const PAGE_LINK_CONTEXT_TOKEN_COUNT = 10;
+const PAGE_LINK_CONTEXT_LENGTH = 220;
+const PAGE_NUMBER_PATTERN = /\d{1,5}/g;
+const DOT_LEADER_PATTERN = /[.．·•…⋯]{3,}/u;
+const TRAILING_DOT_LEADER_PATTERN = /[.．·•…⋯]{3,}[\s\u00a0]*$/u;
 
 export function Reader({
   title,
@@ -64,6 +81,7 @@ export function Reader({
   const tokenBlocks = useMemo(() => chunkTokens(tokens), [tokens]);
   const progress = sectionTotal ? ((sectionIndex + 1) / sectionTotal) * 100 : 0;
   const hasPages = navigationUnit === "page" && Boolean(pageCount && pageCount > 0);
+  const linkedPageCount = hasPages ? pageCount : null;
 
   useEffect(() => {
     setActiveWord(null);
@@ -229,7 +247,7 @@ export function Reader({
         <div className="mx-auto max-w-[62rem]">
           {tokenBlocks.map((block, blockIndex) => (
             <p key={blockIndex} className="reader-block mb-6">
-              {block.map((token) =>
+              {block.map((token, tokenIndex) =>
                 token.isChinese && token.entry ? (
                   <button
                     key={token.id}
@@ -243,7 +261,7 @@ export function Reader({
                     {token.text}
                   </button>
                 ) : (
-                  <span key={token.id}>{token.text}</span>
+                  renderPlainTextToken(token, block, tokenIndex, linkedPageCount, onGoToPage)
                 ),
               )}
             </p>
@@ -272,6 +290,132 @@ function chunkTokens(tokens: ReaderToken[]) {
   }
 
   return blocks;
+}
+
+function renderPlainTextToken(
+  token: ReaderToken,
+  block: ReaderToken[],
+  tokenIndex: number,
+  pageCount: number | null | undefined,
+  onGoToPage?: (page: number, referenceContext?: string) => void,
+) {
+  if (!pageCount || !onGoToPage) {
+    return <span key={token.id}>{token.text}</span>;
+  }
+
+  const leadingContext = getLeadingContext(block, tokenIndex);
+  const parts = splitPageReferences(token.text, leadingContext, pageCount);
+
+  if (parts.length === 1 && parts[0].type === "text") {
+    return <span key={token.id}>{token.text}</span>;
+  }
+
+  return (
+    <span key={token.id}>
+      {parts.map((part, partIndex) =>
+        part.type === "page" ? (
+          <button
+            key={`${partIndex}-${part.text}`}
+            type="button"
+            className="reader-page-link align-baseline"
+            aria-label={`Zu Seite ${part.page} springen`}
+            title={`Zu Seite ${part.page} springen`}
+            onClick={() => onGoToPage(part.page, part.context)}
+          >
+            {part.text}
+          </button>
+        ) : (
+          <span key={`${partIndex}-${part.text}`}>{part.text}</span>
+        ),
+      )}
+    </span>
+  );
+}
+
+function splitPageReferences(text: string, leadingContext: string, pageCount: number): PlainTextPart[] {
+  const parts: PlainTextPart[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(PAGE_NUMBER_PATTERN)) {
+    const value = match[0];
+    const index = match.index ?? 0;
+    const page = Number(value);
+
+    if (!looksLikeTocPageReference(text, leadingContext, index, value.length, page, pageCount)) {
+      continue;
+    }
+
+    if (index > cursor) {
+      parts.push({ type: "text", text: text.slice(cursor, index) });
+    }
+
+    parts.push({
+      type: "page",
+      text: value,
+      page,
+      context: getReferenceContext(text, leadingContext, index, value.length),
+    });
+    cursor = index + value.length;
+  }
+
+  if (cursor < text.length) {
+    parts.push({ type: "text", text: text.slice(cursor) });
+  }
+
+  return parts.length ? parts : [{ type: "text", text }];
+}
+
+function looksLikeTocPageReference(
+  text: string,
+  leadingContext: string,
+  index: number,
+  length: number,
+  page: number,
+  pageCount: number,
+) {
+  if (!Number.isInteger(page) || page < 1 || page > pageCount) {
+    return false;
+  }
+
+  const beforeChar = index > 0 ? text[index - 1] : leadingContext.at(-1) ?? "";
+  const afterChar = text[index + length] ?? "";
+  if (/\d/.test(beforeChar) || /\d/.test(afterChar)) {
+    return false;
+  }
+
+  // Avoid chapter counts such as "40章". TOC target numbers usually stand alone.
+  if (/^[章节卷年月日号]/u.test(afterChar)) {
+    return false;
+  }
+
+  const combinedBefore = `${leadingContext}${text.slice(0, index)}`;
+  const lineBefore = getCurrentLinePrefix(combinedBefore);
+  const shortPrefix = lineBefore.slice(-80);
+
+  return TRAILING_DOT_LEADER_PATTERN.test(shortPrefix) || DOT_LEADER_PATTERN.test(lineBefore);
+}
+
+function getLeadingContext(block: ReaderToken[], tokenIndex: number) {
+  return block
+    .slice(Math.max(0, tokenIndex - PAGE_LINK_CONTEXT_TOKEN_COUNT), tokenIndex)
+    .map((token) => token.text)
+    .join("")
+    .slice(-PAGE_LINK_CONTEXT_LENGTH);
+}
+
+function getReferenceContext(text: string, leadingContext: string, index: number, length: number) {
+  const combined = `${leadingContext}${text}`;
+  const matchIndex = leadingContext.length + index;
+  const lineStart = Math.max(combined.lastIndexOf("\n", matchIndex), combined.lastIndexOf("\r", matchIndex)) + 1;
+  const lineEnd = combined.indexOf("\n", matchIndex);
+  const end = lineEnd === -1 ? Math.min(combined.length, matchIndex + length + 40) : lineEnd;
+
+  return combined.slice(Math.max(lineStart, matchIndex - PAGE_LINK_CONTEXT_LENGTH), end);
+}
+
+function getCurrentLinePrefix(text: string) {
+  const lineStart = Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r")) + 1;
+  return text.slice(lineStart);
 }
 
 function getPopupPosition(rect: DOMRect) {

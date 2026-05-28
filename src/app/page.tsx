@@ -12,7 +12,7 @@ import { ThemeToggle, type ThemeMode } from "@/components/ThemeToggle";
 import { useLibraryBooks } from "@/hooks/useLibraryBooks";
 import { useSavedWords } from "@/hooks/useSavedWords";
 import { extractContextSentence } from "@/lib/context";
-import { getReadingPage, getReadingSection } from "@/lib/readingSections";
+import { getReadingPage, getReadingSection, resolvePdfPageReference } from "@/lib/readingSections";
 import type { BookImportMetadata, BookSourceType, LibraryBook, ReadingSection } from "@/types/library";
 import type { ReaderToken, TranslationLanguage } from "@/types/reader";
 
@@ -139,12 +139,13 @@ export default function Home() {
     void analyzeSection(activeBook, nextIndex);
   }
 
-  function goToPage(page: number) {
+  function goToPage(page: number, referenceContext?: string) {
     if (!activeBook?.pageStarts?.length) {
       return;
     }
 
-    void analyzeSection(activeBook, page - 1);
+    const resolvedPage = referenceContext ? resolvePdfPageReference(activeBook, page, referenceContext) : page;
+    void analyzeSection(activeBook, resolvedPage - 1);
   }
 
   function saveWord(token: ReaderToken) {
